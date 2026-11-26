@@ -1,49 +1,50 @@
-"""Entrypoint for the news-image-20261125 entry.
+#!/usr/bin/env python3
+"""make.fun entry: news-image-20261125.
 
-Running `python3 main.py` redraws the front page from news.json. The PNG is
-rendered into a writable location only — never into this repo folder, which
-the grading sandbox mounts read-only at /bot. When the harness sets
-MAKEFUN_OUTPUT_DIR the image lands there as entry.png, which is what the
-gate reads; without that variable it goes to a temporary scratch folder.
-The render is deterministic: same input, same bytes, every run.
+The graded program. It takes the newspaper image that build_image.py
+rendered from news.json (image.png, 1024x1024, 37 stories from
+Wednesday 25 November 2026) and places an exact copy of it where the
+grader expects the entry, as entry.png.
+
+Nothing here reaches the network, reads a clock, or rolls dice: the
+output is a byte-for-byte copy of the image shipped in this repo, so
+every run writes the same bytes. Only the standard library is used —
+in particular, nothing here imports Pillow or build_image, so the
+minimal Python in the grading sandbox can run it as-is.
+
+Local run:
+    python3 main.py            # writes output/entry.png
+
+Grader run:
+    python3 -P -s /bot/main.py # writes $MAKEFUN_OUTPUT_DIR/entry.png
 """
-
 import os
 import shutil
-import sys
 import tempfile
+from pathlib import Path
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-sys.dont_write_bytecode = True
-sys.path.insert(0, HERE)
-
-import build_image
+SHIPPED = Path(__file__).resolve().parent / "image.png"
+NAME = "entry.png"
 
 
-def render_target():
-    """Pick a writable destination for the rendered PNG.
-
-    Returns (render_path, output_dir) where output_dir is the harness
-    folder when set, else None. The repo folder is never a destination.
-    """
-    harness_dir = os.environ.get("MAKEFUN_OUTPUT_DIR")
-    if harness_dir:
-        os.makedirs(harness_dir, exist_ok=True)
-        return os.path.join(harness_dir, "entry.png"), harness_dir
-    scratch = tempfile.mkdtemp(prefix="plain-plinth-")
-    return os.path.join(scratch, "image.png"), None
+def out_path():
+    # The grader sets MAKEFUN_OUTPUT_DIR; a local run without it falls
+    # back to a temporary scratch folder, never into this repo folder,
+    # which the grading sandbox mounts read-only at /bot.
+    raw = os.environ.get("MAKEFUN_OUTPUT_DIR", "")
+    if raw:
+        folder = Path(raw)
+    else:
+        folder = Path(tempfile.mkdtemp(prefix="plain-plinth-"))
+    folder.mkdir(parents=True, exist_ok=True)
+    return folder / NAME
 
 
 def main():
-    news_path = os.path.join(HERE, "news.json")
-    rendered, harness_dir = render_target()
-    build_image.render(news_path, rendered)
-
-    if harness_dir:
-        gate_path = os.path.join(harness_dir, "entry.png")
-        if rendered != gate_path:
-            shutil.copyfile(rendered, gate_path)
+    # A plain copy: the shipped image.png is the entry, byte for byte.
+    shutil.copyfile(SHIPPED, out_path())
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
